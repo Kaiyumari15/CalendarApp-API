@@ -1,7 +1,7 @@
 # User authentication and authorization logic
 
 from flask import Flask, Blueprint, jsonify, request
-from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt_identity, jwt_required
+from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt, get_jwt_identity, jwt_required
 from werkzeug.security import generate_password_hash, check_password_hash
 
 auth_bp = Blueprint('auth', __name__)
@@ -79,4 +79,20 @@ def refresh_access():
                 "access_token": access_token
             }
         }
+    )
+
+@auth_bp.post('/logout')
+@jwt_required(verify_type=False)
+def logout():
+    jwt = get_jwt()
+    jti = jwt["jti"]
+    exp = jwt["exp"]
+    token_type = jwt["type"]
+
+    db.query("CREATE blocked_token SET jti = $jti, reason='logout', expiry=$expiry", { "jti": jti, "expiry": exp })
+
+    return jsonify(
+        {
+            "message": F"{token_type} token revoked successfully"
+        }, 200
     )

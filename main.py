@@ -2,7 +2,6 @@
 
 import flask
 import os
-import asyncio
 from dotenv import load_dotenv
 import flask_jwt_extended
 from surrealdb import Surreal
@@ -44,6 +43,16 @@ if __name__ == "__main__":
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/auth')
 
+    # Flask callbacks
+    @jwt.token_in_blocklist_loader
+    def token_in_blocklist(jwt_header, jwt_payload):
+        jti = jwt_payload["jti"]
+        token = db.query("SELECT * FROM blocked_token WHERE jti = $jti", {"jti": jti})
+        if token != []:
+            return True
+        return False
+
+    
     # Run the Flask app
     app.run()
     
