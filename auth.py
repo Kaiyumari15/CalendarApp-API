@@ -1,7 +1,7 @@
 # User authentication and authorization logic
 
 from flask import Flask, Blueprint, jsonify, request
-from flask_jwt_extended import create_access_token, create_refresh_token
+from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt_identity, jwt_required
 from werkzeug.security import generate_password_hash, check_password_hash
 
 auth_bp = Blueprint('auth', __name__)
@@ -60,9 +60,23 @@ def login():
     return jsonify(
         {
             "message": "Login successful",
-            "tokenss": {
+            "tokens": {
                 "access_token": access_token,
                 "refresh_token": refresh_token
+            }
+        }
+    )
+
+@auth_bp.get('/refresh')
+@jwt_required(refresh=True)
+def refresh_access():
+    identity = get_jwt_identity()
+    access_token = create_access_token(identity)
+    return jsonify(
+        {
+            "message": "Access token refreshed",
+            "tokens": {
+                "access_token": access_token
             }
         }
     )
