@@ -7,6 +7,7 @@ import flask_jwt_extended
 from surrealdb import Surreal
 
 from auth import auth_bp
+from routes.events import events_bp
 
 load_dotenv()
 
@@ -42,8 +43,13 @@ if __name__ == "__main__":
 
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/auth')
+    app.register_blueprint(events_bp, url_prefix='/events')
 
     # Flask callbacks
+    @jwt.additional_claims_loader
+    def add_claims_to_access_token(identity):
+        pass
+
     @jwt.token_in_blocklist_loader
     def token_in_blocklist(jwt_header, jwt_payload):
         jti = jwt_payload["jti"]
