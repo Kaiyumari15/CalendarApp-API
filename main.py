@@ -19,6 +19,7 @@ if __name__ == "__main__":
     
     # Initialize the database connection
     sdb.init_app(app)
+    db = sdb.get_db()
 
     jwt = flask_jwt_extended.JWTManager()
     jwt.init_app(app)

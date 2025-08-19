@@ -4,11 +4,6 @@ import surrealdb
 import dotenv
 import os
 
-dotenv.load_dotenv()
-
-DB_URL = os.getenv("DB_URL")
-DB_USER = os.getenv("DB_USER")
-DB_PASS = os.getenv("DB_PASS")
 
 class SurrealInstance:
     def __init__(self):
@@ -20,6 +15,12 @@ class SurrealInstance:
         self.connect()
 
     def connect(self):
+        print("Connecting to SurrealDB...")
+        dotenv.load_dotenv()
+        DB_URL = os.getenv("DB_URL")
+        DB_USER = os.getenv("DB_USER")
+        DB_PASS = os.getenv("DB_PASS")
+
         if not DB_URL or not DB_USER or not DB_PASS:
             raise ValueError("DB_URL, DB_USER, and DB_PASS environment variables must be set.")
     
@@ -29,7 +30,8 @@ class SurrealInstance:
             "username": DB_USER,
             "password": DB_PASS
         })
-        print("Connected to SurrealDB")
+        print("Connected to SurrealDB!")
+        return self.driver
 
     def get_db(self):
         if not self.driver:
