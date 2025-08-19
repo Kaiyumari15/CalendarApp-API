@@ -46,17 +46,38 @@ def create_event():
 def get_event_by_id(event_id):
     user = get_jwt_identity()
     user_id = f"user:{id}"
-
-    # Fetch event
-    event_result = db.query("SELECT * FROM calendar_event WHERE id = $event_id", {"event_id": event_id})
-    if event_result == []:
-        return {"error": "Event not found"}, 404
-
-    # Check if user has access
-    access_check = db.query("RETURN (SELECT * FROM has_access_to WHERE in = $user_id AND user = $event_id).permissions CONTAINSANY ['owner', 'admin', 'edit', 'view']", {"user_id": user_id, "event_id": event_id})
-    if not access_check:
-        return {"error": "User does not have access to this event"}, 403
-
+    
+    # Get event and check permissions
+    result = db.query(
+        """
+        LET $event = SELECT * FROM calendar_event WHERE id = $event_id;
+        IF $event IS NULL THEN {
+            RETURN {
+                'error': 'Not found'
+            };
+        };
+        LET $link = (SELECT * FROM has_access_to WHERE in = $user_id AND user = $event_id);
+        IF $link.permission CONTAINSNONE ['owner', 'admin', 'edit', 'view'] THEN {
+            RETURN {
+                'error': 'Insufficient permissions'
+            };
+        };
+        RETURN {
+            'event': $event,
+            'link': $link
+        };
+        """,
+        {"event_id": event_id})
+    # Handle errors
+    if result["error"]:
+        match result["error"]:
+            case 'Not found':
+                return {"error": "Event not found"}, 404
+            case 'Insufficient permissions':
+                return {"error": "User does not have access to this event"}, 403
+    # Return event and link objects
+    event, link = result["event"], result["link"]
     return {
-        "event": event_result
+        "event": event,
+        "link": link
     }, 200
