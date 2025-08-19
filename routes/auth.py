@@ -4,12 +4,14 @@ from flask import Flask, Blueprint, jsonify, request
 from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt, get_jwt_identity, jwt_required
 from werkzeug.security import generate_password_hash, check_password_hash
 
-auth_bp = Blueprint('auth', __name__)
+from extensions import sdb
 
-from main import db
+auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.post('/register')
 def register():
+    db = sdb.get_db()
+
     data = request.get_json()
     username = data.get("username")
     password = data.get("password")
@@ -37,6 +39,8 @@ def register():
 
 @auth_bp.post('/login')
 def login():
+    db = sdb.get_db()
+
     data = request.get_json()
     password = data.get("password")
     email = data.get("email")
@@ -84,6 +88,8 @@ def refresh_access():
 @auth_bp.post('/logout')
 @jwt_required(verify_type=False)
 def logout():
+    db = sdb.get_db()
+    
     jwt = get_jwt()
     jti = jwt["jti"]
     exp = jwt["exp"]

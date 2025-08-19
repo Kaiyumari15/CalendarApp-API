@@ -3,13 +3,15 @@
 from flask import Blueprint, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
-from main import db
+from extensions import sdb
 
 events_bp = Blueprint('events', __name__)
 
 @events_bp.route('/events', methods=['POST'])
 @jwt_required()
 def create_event():
+    db = sdb.get_db()
+    
     event_data = request.json
     user = get_jwt_identity()
     user_id = f"user:{id}"
