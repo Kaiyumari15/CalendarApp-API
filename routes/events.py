@@ -7,7 +7,7 @@ from extensions import sdb
 
 events_bp = Blueprint('events', __name__)
 
-@events_bp.route('/events', methods=['POST'])
+@events_bp.route('/', methods=['POST'])
 @jwt_required()
 def create_event():
     db = sdb.get_db()
@@ -43,9 +43,11 @@ def create_event():
         "link": link_result
     }, 201
 
-@events_bp.route('/events/<int:event_id>', methods=['GET'])
+@events_bp.route('/<int:event_id>', methods=['GET'])
 @jwt_required()
 def get_event_by_id(event_id):
+    db = sdb.get_db()
+
     user = get_jwt_identity()
     user_id = f"user:{id}"
     
@@ -83,3 +85,42 @@ def get_event_by_id(event_id):
         "event": event,
         "link": link
     }, 200
+
+@events_bp.route('/<int:event_id>', methods=['DELETE'])
+@jwt_required()
+def delete_event(event_id):
+    db = sdb.get_db()
+
+    user = get_jwt_identity()
+    user_id = f"user:{id}"
+
+    result = db.query(
+        """
+        IF !record::exists($event) THEN {
+            RETURN {
+                'error': 'Not found'
+            };
+        };
+        IF (SELECT * FROM has_access_to WHERE user = $user_id AND in = $event_id).permission CONTAINS 'owner' THEN {
+            LET $event = DELETE FROM calendar_event WHERE id = $event_id RETURN BEFORE;
+            RETURN $event;
+        } ELSE {
+            RETURN {
+                'error': 'Insufficient permissions'
+            };
+        };
+        """,
+        {"event_id": event_id, "user_id": user_id}
+    )
+
+    if result["error"]:
+        match result["error"]:
+            case 'Not found':
+                return {"error": "Event not found"}, 404
+            case 'Insufficient permissions':
+                return {"error": "User does not have permission to delete this event"}, 403
+            
+    return {
+        "message": "Event deleted successfully",
+        "event": result
+    }
