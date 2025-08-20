@@ -124,3 +124,33 @@ def delete_event(event_id):
         "message": "Event deleted successfully",
         "event": result
     }
+
+@events_bp.route('/owned-by-user/<int:user_id>', methods=['GET'])
+@jwt_required()
+def get_events_by_user(user_id):
+    db = sdb.get_db()
+
+    requester_id = get_jwt_identity()
+    requester_id = f"user:{requester_id}"
+
+    result = db.query(
+        """
+        IF !record::exists($user_id) THEN {
+                    RETURN {
+                'error': 'Not found'
+            };
+        };
+        LET $events = SELECT ->has_access_to(WHERE permission = 'owner')->event<-has_access_to<-user(WHERE id = $requester_id) FROM $user_id;
+        RETURN $events;
+        """,
+        {"user_id": user_id, "requester_id": requester_id}
+    )
+
+    if result["error"]:
+        match result["error"]:
+            case 'Not found':
+                return {"error": "User not found"}, 404
+
+    return {
+        "events": result
+    }, 200
