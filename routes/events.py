@@ -271,3 +271,30 @@ def unshare_event(event_id):
     return jsonify({
         "links": result
     })
+
+@events_bp.route('/<event_id>/share', methods=['GET'])
+def get_shares_by_event(event_id):
+    db = sdb.get_db()
+    event_id = f"event:{event_id}"
+
+    result = db.query("""
+        IF !record::exists($event_id) THEN {
+            RETURN { "error": "Event not found" };
+        };
+        LET $requester_permission = (SELECT * FROM has_access_to WHERE user = $requester AND event = $event_id);
+        IF $requester_permission = [] OR NOT (['owner', 'admin'] CONTAINS $requester_permission) THEN {
+            RETURN { "error": "Insufficient permissions" };
+        };
+        RETURN (SELECT * FROM has_access_to WHERE event = $event_id);
+    """, {"event_id": event_id})
+
+    if result["error"]:
+        match result["error"]:
+            case 'Event not found':
+                return {"error": "Event not found"}, 404
+            case 'Insufficient permissions':
+                return {"error": "User does not have permission to view shares for this event"}, 403
+
+    return jsonify({
+        "links": result
+    })
