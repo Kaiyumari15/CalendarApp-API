@@ -169,7 +169,6 @@ def block_user():
         match result["error"]:
             case "Target user does not exist":
                 return {"error": "Target user does not exist"}, 404
-            case "You have been blocked by target":
 
     return {
         "message": "Successfully blocked user",
