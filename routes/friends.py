@@ -137,6 +137,39 @@ def get_followers():
         "followers": result
     }, 200
 
+@social_bp.route('/followers/<user_id>', methods=['DELETE'])
+@jwt_required()
+def remove_follower(user_id):
+    db = sdb.get_db()
+
+    user = get_jwt_identity()
+    requester_id = f"user:{user}"
+    target_user_id = f"user:{user_id}"
+
+    result = db.query(
+        """
+        IF NOT (record::exists($target_user_id)) THEN {
+            RETURN {"error": "Target user does not exist"};
+        };
+        LET $relationship = SELECT * FROM relationship_with WHERE in = $target_user_id AND out = $requester_id;
+        IF $relationship == [] OR $relationship[0].type = 'blocked' THEN {
+            RETURN {"error": "Target is not following requester"};
+        };
+        RETURN DELETE $relationship RETURN AFTER;
+        """,
+        {"requester_id": requester_id, "target_user_id": target_user_id}
+    )
+
+    if result["error"]:
+        match result["error"]:
+            case "Requester not following target":
+                return {"error": "You are not following this user"}, 404
+
+    return {
+        "message": "Successfully unfollowed user",
+        "relationship": result
+    }, 200
+
 @social_bp.route('/block', methods=['POST'])
 @jwt_required()
 def block_user():
@@ -158,7 +191,7 @@ def block_user():
         IF NOT (record::exists($target_user_id)) THEN {
             RETURN {"error": "Target user does not exist"};
         };
-        LET $reverse_relation = SELECT * FROM relationship_with WHERE in = $target_user_id AND out = $requester_id;
+        LET $reverse_relation = SELECT * FROM relationship_with WHERE in = $target_user_id AND out = $requester_id AND type != 'blocked';
         DELETE ONLY $reverse_relation;
         RELATE ONLY $requester_id->relationship_with->($target_user_id) SET type = 'blocked', labels = [];
         """,
