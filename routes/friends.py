@@ -88,6 +88,35 @@ def follow_user():
         "message": "Successfully followed user",
         "relationship": result}, 201
 
+@social_bp.route('/following/<user_id>', methods=['DELETE'])
+@jwt_required()
+def unfollow_user(user_id):
+    db = sdb.get_db()
+
+    user = get_jwt_identity()
+    requester_id = f"user:{user}"
+    target_user_id = f"user:{user_id}"
+
+    result = db.query(
+        """
+        LET $relationship = SELECT * FROM relationship_with WHERE in = $requester_id AND out = $target_user_id;
+        IF $relationship == [] THEN {
+            RETURN {"error": "Requester not following target"};
+        };
+        RETURN DELETE $relationship RETURN AFTER;
+        """,
+        {"requester_id": requester_id, "target_user_id": target_user_id}
+    )
+
+    if result["error"]:
+        match result["error"]:
+            case "Requester not following target":
+                return {"error": "You are not following this user"}, 404
+
+    return {
+        "message": "Successfully unfollowed user",
+        "relationship": result}, 200
+
 @social_bp.route('/followers', methods=['GET'])
 @jwt_required()
 def get_followers():
