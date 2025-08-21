@@ -136,3 +136,42 @@ def get_followers():
     return {
         "followers": result
     }, 200
+
+@social_bp.route('/block', methods=['POST'])
+@jwt_required()
+def block_user():
+    db = sdb.get_db()
+
+    user = get_jwt_identity()
+    requester_id = f"user:{user}"
+
+    data = request.get_json()
+    target_user_id = data.get("target_user_id")
+
+    if not target_user_id:
+        return {"error": "Target user ID is required"}, 400
+    target_user_id = f"user:{target_user_id}"
+
+    # Create a block relationship
+    result = db.query(
+        """
+        IF NOT (record::exists($target_user_id)) THEN {
+            RETURN {"error": "Target user does not exist"};
+        };
+        LET $reverse_relation = SELECT * FROM relationship_with WHERE in = $target_user_id AND out = $requester_id;
+        DELETE ONLY $reverse_relation;
+        RELATE ONLY $requester_id->relationship_with->($target_user_id) SET type = 'blocked', labels = [];
+        """,
+        {"requester_id": requester_id, "target_user_id": target_user_id}
+    )
+
+    if result["error"]:
+        match result["error"]:
+            case "Target user does not exist":
+                return {"error": "Target user does not exist"}, 404
+            case "You have been blocked by target":
+
+    return {
+        "message": "Successfully blocked user",
+        "relationship": result
+    }, 201
