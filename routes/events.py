@@ -239,7 +239,7 @@ def unshare_event(event_id):
             RETURN { "error": "Event not found" };
         };
         LET $requester_permission = (SELECT * FROM has_access_to WHERE in = $requester AND event = $event_id);
-        IF $requester_permission = [] OR NOT (['owner', 'admin'] CONTAINS $requester_permission) THEN {
+        IF $requester_permission = [] OR NOT (['owner', 'admin'] CONTAINS $requester_permission[0].permission) THEN {
             RETURN { "error": "Insufficient permissions" };
         };
         LET $links = [];
@@ -273,6 +273,7 @@ def unshare_event(event_id):
     })
 
 @events_bp.route('/<event_id>/share', methods=['GET'])
+@jwt_required
 def get_shares_by_event(event_id):
     db = sdb.get_db()
     event_id = f"event:{event_id}"
@@ -282,7 +283,7 @@ def get_shares_by_event(event_id):
             RETURN { "error": "Event not found" };
         };
         LET $requester_permission = (SELECT * FROM has_access_to WHERE user = $requester AND event = $event_id);
-        IF $requester_permission = [] OR NOT (['owner', 'admin'] CONTAINS $requester_permission) THEN {
+        IF $requester_permission = [] OR NOT (['owner', 'admin'] CONTAINS $requester_permission[0].permission.) THEN {
             RETURN { "error": "Insufficient permissions" };
         };
         RETURN (SELECT * FROM has_access_to WHERE event = $event_id);
@@ -294,6 +295,44 @@ def get_shares_by_event(event_id):
                 return {"error": "Event not found"}, 404
             case 'Insufficient permissions':
                 return {"error": "User does not have permission to view shares for this event"}, 403
+
+    return jsonify({
+        "links": result
+    })
+
+@events_bp.route('/<event_id>/share/<user_id>', methods=['GET'])
+@jwt_required()
+def get_share_by_event_and_user(event_id, user_id):
+    db = sdb.get_db()
+
+    requesting_user = get_jwt_identity()
+    event_id = f"event:{event_id}"
+    user_id = f"user:{user_id}"
+
+    result = db.query("""
+        IF !record::exists($event_id) THEN {
+            RETURN { "error": "Event not found" };
+        };
+        IF !record::exists($user_id) THEN {
+            RETURN { "error": "User not found" };
+        };
+        IF $requesting_user = $user_id THEN {
+            RETURN (SELECT * FROM has_access_to WHERE event = $event_id AND user = $user_id);
+        };
+        LET $requesting_user_permission = (SELECT * FROM has_access_to WHERE user = $requesting_user AND event = $event_id);
+        IF $requesting_user != $user_id AND ($requesting_user_permission != [] OR NOT (['owner', 'admin'] CONTAINS $requesting_user_permission[0].permission)) THEN {
+            RETURN { "error": "User does not have permission to view this share" };
+        };
+    """, {"event_id": event_id, "user_id": user_id})
+
+    if result["error"]:
+        match result["error"]:
+            case 'Event not found':
+                return {"error": "Event not found"}, 404
+            case 'User not found':
+                return {"error": "User not found"}, 404
+            case 'Insufficient permissions':
+                return {"error": "User does not have permission to view this share"}, 403
 
     return jsonify({
         "links": result
