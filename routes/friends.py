@@ -250,3 +250,38 @@ def block_user():
         "message": "Successfully blocked user",
         "relationship": result
     }, 201
+
+@social_bp.route('/block/<user_id>', methods=['DELETE'])
+@jwt_required()
+def unblock_user(user_id):
+    db = sdb.get_db()
+
+    user = get_jwt_identity()
+    requester_id = f"user:{user}"
+    target_user_id = f"user:{user_id}"
+
+    result = db.query(
+        """
+        IF NOT (record::exists($target_user_id)) THEN {
+            RETURN {"error": "Target user does not exist"};
+        };
+        LET $relationship = SELECT * FROM relationship_with WHERE in = $requester_id AND out = $target_user_id;
+        IF $relationship == [] OR $relationship[0].type != 'blocked' THEN {
+            RETURN {"error": "Target is not blocked by requester"};
+        };
+        DELETE ONLY $relationship.id;
+        """,
+        {"requester_id": requester_id, "target_user_id": target_user_id}
+    )
+
+    if result["error"]:
+        match result["error"]:
+            case "Target user does not exist":
+                return {"error": "Target user does not exist"}, 404
+            case "Target is not blocked by user":
+                return {"error": "Target is not blocked by user"}, 404
+
+    return {
+        "message": "Successfully unblocked user",
+        "relationship": result
+    }, 200
