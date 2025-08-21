@@ -17,7 +17,7 @@ def get_friends():
 
     result = db.query(
         """
-        LET $friends = SELECT * FROM relationship_with WHERE in = $user_id AND type = 'friend';
+        LET $friends = SELECT * FROM relationship_with WHERE in = $user_id AND type = 'friends';
         RETURN $friends;
         """,
         {"user_id": user_id}
@@ -37,7 +37,7 @@ def get_following():
 
     result = db.query(
         """
-        LET $following = SELECT * FROM relationship_with WHERE in = $user_id AND (type = 'following' OR type = 'friend');
+        LET $following = SELECT * FROM relationship_with WHERE in = $user_id AND (type = 'following' OR type = 'friends');
         RETURN $following;
         """,
         {"user_id": user_id}
@@ -127,7 +127,7 @@ def get_followers():
 
     result = db.query(
         """
-        LET $followers = SELECT * FROM relationship_with WHERE in = $user_id AND (type = 'follower' OR type = 'friend');
+        LET $followers = SELECT * FROM relationship_with WHERE in = $user_id AND (type = 'follower' OR type = 'friends');
         RETURN $followers;
         """,
         {"user_id": user_id}
@@ -155,6 +155,10 @@ def remove_follower(user_id):
         IF $relationship == [] OR $relationship[0].type = 'blocked' THEN {
             RETURN {"error": "Target is not following requester"};
         };
+        LET $reverse_relationship = SELECT * FROM relationship_with WHERE in = $requester_id AND out = $target_user_id;
+        IF $reverse_relationship != [] AND $reverse_relationship[0].type = 'friends' THEN {
+            UPDATE ONLY $reverse_relationship SET type = 'follows';
+        };
         RETURN DELETE $relationship RETURN AFTER;
         """,
         {"requester_id": requester_id, "target_user_id": target_user_id}
@@ -162,8 +166,10 @@ def remove_follower(user_id):
 
     if result["error"]:
         match result["error"]:
-            case "Requester not following target":
-                return {"error": "You are not following this user"}, 404
+            case "Target user does not exist":
+                return {"error": "Target user does not exist"}, 404
+            case "Target is not following user":
+                return {"error": "Target is not following user"}, 404
 
     return {
         "message": "Successfully unfollowed user",
