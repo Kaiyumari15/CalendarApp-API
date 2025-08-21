@@ -176,6 +176,43 @@ def remove_follower(user_id):
         "relationship": result
     }, 200
 
+@social_bp.route('/friends/<user_id>', methods=['DELETE'])
+@jwt_required()
+def remove_friend(user_id):
+    db = sdb.get_db()
+
+    user = get_jwt_identity()
+    requester_id = f"user:{user}"
+    target_user_id = f"user:{user_id}"
+
+    result = db.query(
+        """
+        IF NOT (record::exists($target_user_id)) THEN {
+            RETURN {"error": "Target user does not exist"};
+        };
+        LET $relationship = SELECT * FROM relationship_with WHERE in = $requester_id AND out = $target_user_id;
+        IF $relationship == [] OR $relationship[0].type != 'friends' THEN {
+            RETURN {"error": "Target is not friends with requester"};
+        };
+        LET $reverse_relationship = SELECT * FROM relationship_with WHERE in = $target_user_id AND out = $requester_id;
+        UPDATE ONLY $reverse_relationship.id SET type = 'follows';
+        UPDATE ONLY $relationship.id SET type = 'follows';
+        """,
+        {"requester_id": requester_id, "target_user_id": target_user_id}
+    )
+
+    if result["error"]:
+        match result["error"]:
+            case "Target user does not exist":
+                return {"error": "Target user does not exist"}, 404
+            case "Target is not friends with user":
+                return {"error": "Target is not friends with user"}, 404
+
+    return {
+        "message": "Successfully unfollowed user",
+        "relationship": result
+    }, 200
+
 @social_bp.route('/block', methods=['POST'])
 @jwt_required()
 def block_user():
