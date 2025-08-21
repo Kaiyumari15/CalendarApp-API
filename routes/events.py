@@ -376,10 +376,7 @@ def update_event(event_id):
             case 'Insufficient permissions':
                 return {"error": "User does not have permission to edit this event"}, 403
 
-    # Update event
-    update_result = db.query("UPDATE ONLY $event SET content = $event_data RETURN AFTER", {"event": result, "event_data": event_data})
-
     return jsonify({
         "message": "Event updated successfully",
-        "event": update_result
+        "event": result
     }), 200
