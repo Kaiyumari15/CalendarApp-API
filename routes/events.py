@@ -171,7 +171,7 @@ def share_event(event_id):
         user_id = share['user_id']
         permission = share['share']
 
-        if not user_id or not permission or permission not in ['owner', 'admin', 'edit', 'view']:
+        if not user_id or not permission or permission not in ['admin', 'edit', 'view']:
             return {"error": "User ID and valid permission are required"}, 400
         user_id = f"user:{user_id}"
         shares.append({"user_id": user_id, "permission": permission})
@@ -196,6 +196,9 @@ def share_event(event_id):
                 LET $links = array::append($links, $link);
                 CONTINUE;
             };
+            IF $existing[0].permission = 'owner' THEN {
+                RETURN { "error": "User has higher permission" };
+            }
             LET $updated = (UPDATE $existing[0] SET permission = $share.permission);
             LET $links = array::append($links, $updated);
         };
@@ -208,7 +211,7 @@ def share_event(event_id):
                 return {"error": "Event not found"}, 404
             case 'Insufficient permissions':
                 return {"error": "User does not have permission to share this event"}, 403
-            
+
     return jsonify({
         "links": result
     })
