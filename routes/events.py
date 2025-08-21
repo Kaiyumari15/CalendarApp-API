@@ -86,6 +86,49 @@ def get_event_by_id(event_id):
         "link": link
     }, 200
 
+@events_bp.route('/<event_id>', methods=["PUT"])
+@jwt_required()
+def update_event(event_id):
+    db = sdb.get_db()
+
+    event_id = f"event:{event_id}"
+    event_data = request.json
+    requester = get_jwt_identity()
+    requester = f"user:{requester}"
+
+    event_data = event_data.get("content", {})
+
+    # Check if event exists
+    result = db.query("""
+        LET $event = SELECT * FROM calendar_event WHERE id = $event_id;
+        IF $event IS NULL THEN {
+            RETURN { "error": "Event not found" };
+        };
+        LET $requester_permission = (SELECT * FROM has_access_to WHERE in = $requester AND event = $event_id);
+        IF $requester_permission = [] OR NOT (['owner', 'admin'] CONTAINS $requester_permission[0].permission) THEN {
+            RETURN { "error": "Insufficient permissions" };
+        };
+        BEGIN TRANSACTION;
+        LET $updated_event = UPDATE $event MERGE $event_data RETURN AFTER;
+        IF $updated_event.start_time > $updated_event.endtime THEN {
+            RETURN { "error": "Start time must be before end time" };
+        }
+        COMMIT TRANSACTION;
+        RETURN $updated_event;
+    """, {"event_id": event_id, "requester": requester, "event_data": event_data})
+
+    if result["error"]:
+        match result["error"]:
+            case 'Event not found':
+                return {"error": "Event not found"}, 404
+            case 'Insufficient permissions':
+                return {"error": "User does not have permission to edit this event"}, 403
+
+    return jsonify({
+        "message": "Event updated successfully",
+        "event": result
+    }), 200
+
 @events_bp.route('/<event_id>', methods=['DELETE'])
 @jwt_required()
 def delete_event(event_id):
@@ -338,45 +381,3 @@ def get_share_by_event_and_user(event_id, user_id):
         "links": result
     })
 
-@events_bp.route('/<event_id>', methods=["PUT"])
-@jwt_required()
-def update_event(event_id):
-    db = sdb.get_db()
-
-    event_id = f"event:{event_id}"
-    event_data = request.json
-    requester = get_jwt_identity()
-    requester = f"user:{requester}"
-
-    event_data = event_data.get("content", {})
-
-    # Check if event exists
-    result = db.query("""
-        LET $event = SELECT * FROM calendar_event WHERE id = $event_id;
-        IF $event IS NULL THEN {
-            RETURN { "error": "Event not found" };
-        };
-        LET $requester_permission = (SELECT * FROM has_access_to WHERE in = $requester AND event = $event_id);
-        IF $requester_permission = [] OR NOT (['owner', 'admin'] CONTAINS $requester_permission[0].permission) THEN {
-            RETURN { "error": "Insufficient permissions" };
-        };
-        BEGIN TRANSACTION;
-        LET $updated_event = UPDATE $event MERGE $event_data RETURN AFTER;
-        IF $updated_event.start_time > $updated_event.endtime THEN {
-            RETURN { "error": "Start time must be before end time" };
-        }
-        COMMIT TRANSACTION;
-        RETURN $updated_event;
-    """, {"event_id": event_id, "requester": requester, "event_data": event_data})
-
-    if result["error"]:
-        match result["error"]:
-            case 'Event not found':
-                return {"error": "Event not found"}, 404
-            case 'Insufficient permissions':
-                return {"error": "User does not have permission to edit this event"}, 403
-
-    return jsonify({
-        "message": "Event updated successfully",
-        "event": result
-    }), 200
