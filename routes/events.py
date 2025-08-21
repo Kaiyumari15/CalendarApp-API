@@ -192,14 +192,14 @@ def share_event(event_id):
             };
             LET $existing = (SELECT * FROM has_access_to WHERE user = $share.user_id AND event = $event_id);
             IF $existing = [] THEN {
-                LET $link = (INSERT RELATION $share.user_id->has_access_to->$event_id SET permission = $share.permission);
+                LET $link = (RELATE ONLY $share.user_id->has_access_to->$event_id SET permission = $share.permission SET because_of = 'direct invite');
                 LET $links = array::append($links, $link);
                 CONTINUE;
             };
             IF $existing[0].permission = 'owner' THEN {
                 RETURN { "error": "User has higher permission" };
             }
-            LET $updated = (UPDATE $existing[0] SET permission = $share.permission);
+            LET $updated = (UPDATE ONLY $existing[0].id SET permission = $share.permission);
             LET $links = array::append($links, $updated);
         };
         RETURN $links;
@@ -211,6 +211,62 @@ def share_event(event_id):
                 return {"error": "Event not found"}, 404
             case 'Insufficient permissions':
                 return {"error": "User does not have permission to share this event"}, 403
+
+    return jsonify({
+        "links": result
+    })
+
+@events_bp.route('/<event_id>/share', methods=['DELETE'])
+@jwt_required()
+def unshare_event(event_id):
+    db = sdb.get_db()
+
+    requester = get_jwt_identity()
+    requester = f"user:{requester}"
+
+    event_id = f"event:{event_id}"
+    data = request.json
+    shares = []
+    for share in data.get("shares", []):
+        user_id = share['user_id']
+        if not user_id:
+            return {"error": "User ID is required"}, 400
+        user_id = f"user:{user_id}"
+        shares.append({"user_id": user_id})
+
+    result = db.query("""
+        IF !record::exists($event_id) THEN {
+            RETURN { "error": "Event not found" };
+        };
+        LET $requester_permission = (SELECT * FROM has_access_to WHERE in = $requester AND event = $event_id);
+        IF $requester_permission = [] OR NOT (['owner', 'admin'] CONTAINS $requester_permission) THEN {
+            RETURN { "error": "Insufficient permissions" };
+        };
+        LET $links = [];
+        FOR $share IN $shares {
+            IF !record::exists($share.user_id) THEN {
+                LET $links = array::append($links, { "error": "User $share.user_id not found" });
+                CONTINUE;
+            };
+            LET $existing = (SELECT * FROM has_access_to WHERE user = $share.user_id AND event = $event_id);
+            IF $existing = [] THEN {
+                RETURN { "error": "Share not found };
+            };
+            IF $existing[0].permission = 'owner' THEN {
+                RETURN { "error": "User has higher permission" };
+            }
+            LET $deleted = (DELETE ONLY $existing[0].id);
+            LET $links = array::append($links, $deleted);
+        };
+        RETURN $links;
+    """, {"requester": requester, "event_id": event_id, "shares": shares})
+
+    if result["error"]:
+        match result["error"]:
+            case 'Event not found':
+                return {"error": "Event not found"}, 404
+            case 'Insufficient permissions':
+                return {"error": "User does not have edit permissions on this event"}, 403
 
     return jsonify({
         "links": result
