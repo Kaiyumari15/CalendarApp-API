@@ -15,5 +15,21 @@ def get_event_labels():
     current_user = get_jwt_identity()
     user_id = f"user:{current_user}"
 
-    event_labels = db.query("SELECT * FROM event_labels WHERE owner = $user_id", {"user_id": user_id})
+    event_labels = db.query("SELECT * FROM event_label WHERE owner = $user_id;", {"user_id": user_id})
     return jsonify(event_labels)
+
+@event_labels_bp.route('/event-labels', methods=['POST'])
+@jwt_required()
+def create_event_label():
+    db = sdb.get_db()
+    current_user = get_jwt_identity()
+    user_id = f"user:{current_user}"
+
+    data = request.get_json()
+    label_name = data.get("name")
+
+    if not label_name:
+        return jsonify({"error": "Label name is required"}), 400
+
+    db.query("CREATE event_label SET name = $name, owner = $user_id;", {"name": label_name, "user_id": user_id})
+    return jsonify({"message": "Event label created successfully"}), 201
