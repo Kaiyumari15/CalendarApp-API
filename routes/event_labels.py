@@ -34,6 +34,39 @@ def create_event_label():
     db.query("CREATE event_label SET name = $name, owner = $user_id;", {"name": label_name, "user_id": user_id})
     return jsonify({"message": "Event label created successfully"}), 201
 
+@event_labels_bp.route('/<label_id>', methods=['PUT'])
+@jwt_required()
+def edit_event_label(label_id):
+    db = sdb.get_db()
+    current_user = get_jwt_identity()
+    user_id = f"user:{current_user}"
+
+    data = request.get_json()
+    label_name = data.get("name")
+
+    if not label_name:
+        return jsonify({"error": "Label name is required"}), 400
+
+    result = db.query("""
+            IF NOT (record::exists($label_id)) THEN {
+                RETURN { "error": "Event label not found" };
+            };
+            IF (SELECT owner FROM $label_id) != $user_id THEN {
+                RETURN { "error": "Requester is not owner" };
+            }
+            UPDATE event_label SET name = $name WHERE id = $label_id AND owner = $user_id;
+            RETURN { "message": "Event label updated successfully" };
+            """, {"name": label_name, "label_id": label_id, "user_id": user_id})
+
+    if result.get("error"):
+        match result["error"]:
+            case "Event label not found":
+                return jsonify({"error": "Event label not found"}), 404
+            case "Requester is not owner":
+                return jsonify({"error": "You do not have permission to edit this label"}), 403
+
+    return jsonify({"message": "Event label updated successfully", "label": result}), 200
+
 @event_labels_bp.route('/<label_id>', methods=['DELETE'])
 @jwt_required()
 def delete_event_label(label_id):
