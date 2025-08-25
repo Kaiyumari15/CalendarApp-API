@@ -440,3 +440,63 @@ def share_event_with_relationship_label(event_id, label_id):
         "relation": result["relation"],
         "links": result["links"]
     })
+
+@events_bp.route('/<event_id>/share/relationship-label/<label_id>', methods=['DELETE'])
+@jwt_required()
+def remove_share_by_event(event_id, label_id)
+    db = sdb.get_db()
+
+    identity = get_jwt_identity()
+    requester_id = f"user:{identity}"
+    event_id = f"event:{event_id}"
+    label_id = f"relationship_label:{label_id}"
+
+    result = db.query("""
+            IF NOT record::exists($event_id) THEN {
+                RETURN { "error": "Event not found" };
+            };
+            IF NOT record::exists($label_id) THEN {
+                RETURN { "error": "Label not found" };
+            };
+            LET $event_permission = (SELECT * FROM has_access_to WHERE in = $requester_id AND out = $event_id);
+            IF $event_permission = [] OR NOT (['owner', 'admin'] CONTAINS $event_permission[0].permission) THEN {
+                RETURN { "error": "Insufficient event permissions" };
+            };
+            IF $label_id.owner != $requester_id THEN {
+                RETURN { "error": "Insufficient label permissions" };
+            };
+            LET $relation = (SELECT * FROM default_share WHERE in = $label_id AND out = $event_id);
+            IF $relation = [] THEN {
+                RETURN { "error": "No existing share found" };
+            };
+            LET $links = [];
+            LET $shares = (SELECT * FROM has_access_to WHERE out = $event_id AND because_of CONTAINS $relation[0].id);
+            FOR $share IN $shares {
+                UPDATE $share.id SET because_of -= $relation[0].id;
+                IF $share.because_of = [] THEN {
+                    LET $link = DELETE $share.id RETURN AFTER;
+                    $links += $link;
+                };
+
+            }
+            RETURN { "links": $links, "relation": $relation };
+        """)
+    
+    if result["error"]:
+        match result["error"]:
+            case 'Event not found':
+                return {"error": "Event not found"}, 404
+            case 'Label not found':
+                return {"error": "Label not found"}, 404
+            case 'Insufficient event permissions':
+                return {"error": "User does not have permission to unshare this event"}, 403
+            case 'Insufficient label permissions':
+                return {"error": "User does not own this label"}, 403
+            case 'No existing share found':
+                return {"error": "No existing share found for this label and event"}, 404
+
+    return jsonify({
+        "message": "Share removed successfully",
+        "links": result["links"],
+        "relation": result["relation"]
+    })
