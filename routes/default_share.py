@@ -5,6 +5,30 @@ from extensions import sdb
 
 default_share_bp = Blueprint('default-share', __name__)
 
+@default_share_bp.route('/<relationship_label_id>', methods=['GET'])
+@jwt_required()
+def get_default_share_with_by_relationship_label(relationship_label_id):
+    db = sdb.get_db()
+    requester = get_jwt_identity()
+    requester_id = f"user:{requester}"
+
+    result = db.query("""
+        IF NOT record::exists($relationship_label_id) THEN {
+            RETURN { "error": "Label not found" };
+        };
+        LET $shares = (SELECT * FROM default_share WHERE in = $relationship_label_id);
+        RETURN { "shares": $shares };
+    """, {"relationship_label_id": relationship_label_id})
+
+    if result["error"]:
+        match result["error"]:
+            case 'Label not found':
+                return {"error": "Label not found"}, 404
+
+    return jsonify({
+        "shares": result["shares"]
+    })
+
 @default_share_bp.route('/<relationship_label_id>/event/<event_id>', methods=['POST'])
 @jwt_required()
 def create_default_share_with_event(relationship_label_id, event_id):
