@@ -16,9 +16,12 @@ def get_default_share_with_by_relationship_label(relationship_label_id):
         IF NOT record::exists($relationship_label_id) THEN {
             RETURN { "error": "Label not found" };
         };
+        IF NOT $relationship_label_id.owner = $requester_id THEN {
+            RETURN { "error": "Insufficient permissions" };
+        };
         LET $shares = (SELECT * FROM default_share WHERE in = $relationship_label_id);
         RETURN { "shares": $shares };
-    """, {"relationship_label_id": relationship_label_id})
+    """, {"relationship_label_id": relationship_label_id, "requester_id": requester_id})
 
     if result["error"]:
         match result["error"]:
