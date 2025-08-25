@@ -441,9 +441,65 @@ def share_event_with_relationship_label(event_id, label_id):
         "links": result["links"]
     })
 
+@events_bp.route('/<event_id>/share/relationship-label/<label_id>', methods=['PUT'])
+@jwt_required()
+def update_share_by_(event_id):
+    db = sdb.get_db()
+    requester = get_jwt_identity()
+
+    data = request.json
+    permission = data.get("permission", str)
+
+    requester_id = f"user:{requester}"
+    event_id = f"event:{event_id}"
+    label_id = f"relationship_label:{label_id}"
+
+    result = db.query(
+        """
+        IF !record::exists($event_id) THEN {
+            RETURN { "error": "Event not found" };
+        };
+        IF !record::exists($label_id) THEN {
+            RETURN { "error": "Label not found" };
+        };
+        LET $event_permission = (SELECT * FROM has_access_to WHERE in = $requester_id AND out = $event_id);
+        IF $event_permission = [] OR NOT (['owner', 'admin'] CONTAINS $event_permission[0].permission) THEN {
+            RETURN { "error": "Insufficient event permissions" };
+        };
+        IF $label_id.owner != $requester_id THEN {
+            RETURN { "error": "Insufficient label permissions" };
+        };
+        LET $relation = (SELECT * FROM default_share WHERE in = $label_id AND out = $event_id);
+        IF $relation = [] THEN {
+            RETURN { "error": "No existing share found" };
+        };
+        LET $links = [];
+        LET $shares = (SELECT * FROM has_access_to WHERE out = $event_id AND because_of CONTAINS $relation[0].id);
+        FOR $share IN $shares {
+            UPDATE $share.id SET permission = $permission;
+            $links += $share.id;
+        };
+        RETURN { links: $links, relation: $relation };
+        """, {"event_id": event_id, "requester_id": requester_id, "permission": permission})
+
+    if result["error"]:
+        match result["error"]:
+            case 'Event not found':
+                return {"error": "Event not found"}, 404
+            case 'Insufficient event permissions':
+                return {"error": "User does not have permission to update this share"}, 403
+            case 'No existing share found':
+                return {"error": "No existing share found for this event"}, 404
+
+    return jsonify({
+        "message": "Share updated successfully",
+        "links": result["links"],
+        "relation": result["relation"]
+    })
+
 @events_bp.route('/<event_id>/share/relationship-label/<label_id>', methods=['DELETE'])
 @jwt_required()
-def remove_share_by_event(event_id, label_id)
+def remove_share_by_event(event_id, label_id):
     db = sdb.get_db()
 
     identity = get_jwt_identity()
